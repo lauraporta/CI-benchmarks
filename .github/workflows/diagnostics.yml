@@ -35,9 +35,9 @@ jobs:
           pip install -e .
 
       - name: torch + suite2p diagnostics
-        run: |
-          pytest tests/test_torch_diag.py tests/test_suite2p_step.py \
-            --benchmark-json=diag-${{ matrix.os }}-py${{ matrix.python-version }}-run${{ matrix.run }}.json
+        # single line: Windows runs this in PowerShell, where '\' is not a line
+        # continuation (that broke the previous multi-line version).
+        run: pytest tests/test_torch_diag.py tests/test_suite2p_step.py --benchmark-json=diag-${{ matrix.os }}-py${{ matrix.python-version }}-run${{ matrix.run }}.json
 
       - name: Upload results
         if: always()
