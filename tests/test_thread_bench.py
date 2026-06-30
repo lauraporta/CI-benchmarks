@@ -81,10 +81,10 @@ def _env_banner():
 @pytest.fixture(scope="session")
 def image():
     # Content is irrelevant for timing a fixed-size ViT forward pass; a fixed
-    # seed keeps the work identical across legs. 256x256 ~ the registered
-    # max-projection the pipeline feeds cellpose.
+    # seed keeps the work identical across legs. 128x128 matches the binned
+    # max-projection the pipeline actually feeds cellpose (~126x122).
     rng = np.random.default_rng(0)
-    return rng.random((256, 256), dtype=np.float32)
+    return rng.random((128, 128), dtype=np.float32)
 
 
 @pytest.fixture(scope="session")
