@@ -1,0 +1,34 @@
+[project]
+name = "cellpose-ci-bench"
+version = "0.0.0"
+description = "Controlled CI benchmark for cellpose/BLAS thread oversubscription"
+requires-python = ">=3.12"
+
+# Left intentionally UNPINNED to mirror photon-mosaic-pipeline's own unpinned
+# deps, so each (OS, python) leg resolves the same versions the pipeline would.
+dependencies = [
+    "cellpose",
+    "suite2p-NIU",
+    "torch",
+    "numba",
+    "numpy",
+    "threadpoolctl",
+    "pytest",
+    "pytest-benchmark",
+]
+
+[tool.pytest.ini_options]
+addopts = """
+-v
+--benchmark-min-rounds=3
+--benchmark-warmup=off
+--benchmark-columns=min,median,mean,stddev,rounds
+--benchmark-sort=fullname
+"""
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []
