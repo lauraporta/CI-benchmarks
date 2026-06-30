@@ -2,5 +2,4 @@ __pycache__/
 *.pyc
 artifacts/
 bench-*.json
-bench_summary.png
 *.egg-info/

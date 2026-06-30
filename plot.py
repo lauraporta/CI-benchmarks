@@ -31,8 +31,15 @@ def main(root):
     rows = load(Path(root))
     if not rows:
         print("No bench-*.json found under", root)
-        # still emit an (empty) figure so the artifact upload has something
-        plt.figure().savefig("bench_summary.png")
+        # Emit a clearly-labelled figure (not a silent blank/white image) so a
+        # run with no data -- e.g. a cancelled run whose plot job still fired --
+        # is unmistakable rather than looking like a real-but-empty result.
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.text(0.5, 0.5, "NO DATA\n(no bench-*.json artifacts found —\n"
+                "did the bench jobs run / not get cancelled?)",
+                ha="center", va="center", fontsize=18, color="crimson")
+        ax.axis("off")
+        fig.savefig("bench_summary.png", dpi=120)
         return
 
     tests = sorted({r["test"] for r in rows})
