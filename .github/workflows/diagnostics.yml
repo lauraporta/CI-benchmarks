@@ -1,0 +1,49 @@
+name: diagnostics
+
+# Second experiment: (1) why is torch CPU inference so much slower on ubuntu,
+# (2) does the suite2p registration stage carry the run-to-run variance.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "tests/test_torch_diag.py"
+      - "tests/test_suite2p_step.py"
+      - ".github/workflows/diagnostics.yml"
+      - "pyproject.toml"
+
+jobs:
+  diag:
+    name: ${{ matrix.os }} py${{ matrix.python-version }} run${{ matrix.run }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.12", "3.14"]
+        run: [1, 2, 3]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: torch + suite2p diagnostics
+        run: |
+          pytest tests/test_torch_diag.py tests/test_suite2p_step.py \
+            --benchmark-json=diag-${{ matrix.os }}-py${{ matrix.python-version }}-run${{ matrix.run }}.json
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-${{ matrix.os }}-py${{ matrix.python-version }}-run${{ matrix.run }}
+          path: |
+            diag-*.json
+            torch-config-*.txt

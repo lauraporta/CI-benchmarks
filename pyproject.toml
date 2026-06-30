@@ -12,6 +12,7 @@ dependencies = [
     "torch",
     "numba",
     "numpy",
+    "tifffile",
     "threadpoolctl",
     "pytest",
     "pytest-benchmark",
