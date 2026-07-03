@@ -35,6 +35,53 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
 
+      # ADVERSARY: persist the per-leg confounds the harness only ever printed to
+      # stdout (now-purged logs). This makes the "identical packages" premise and
+      # the "faster physical machine" premise *checkable from the artifacts*.
+      - name: Log environment (confounds)
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json, os, platform, subprocess, sys
+          leg = "${{ matrix.os }}-py${{ matrix.python-version }}-run${{ matrix.run }}"
+          info = {
+              "leg": leg,
+              "platform": platform.platform(),
+              "processor": platform.processor(),
+              "machine": platform.machine(),
+              "os_cpu_count": os.cpu_count(),
+              "python": sys.version.replace("\n", " "),
+          }
+          try:
+              import threadpoolctl
+              info["threadpool"] = threadpoolctl.threadpool_info()
+          except Exception as e:
+              info["threadpool_err"] = str(e)
+          try:
+              info["pip_freeze"] = subprocess.check_output(
+                  [sys.executable, "-m", "pip", "freeze"], text=True).splitlines()
+          except Exception as e:
+              info["pip_freeze_err"] = str(e)
+          try:
+              if sys.platform.startswith("linux"):
+                  info["cpu_model"] = subprocess.check_output(
+                      ["bash", "-c", "grep -m1 'model name' /proc/cpuinfo"], text=True).strip()
+              elif sys.platform == "darwin":
+                  info["cpu_model"] = subprocess.check_output(
+                      ["sysctl", "-n", "machdep.cpu.brand_string"], text=True).strip()
+              else:  # windows: platform.processor() already carries the model
+                  info["cpu_model"] = platform.processor()
+          except Exception as e:
+              info["cpu_model_err"] = str(e)
+          with open(f"env-{leg}.json", "w") as f:
+              json.dump(info, f, indent=2)
+          print(json.dumps({k: v for k, v in info.items() if k != "pip_freeze"}, indent=2))
+          for line in info.get("pip_freeze", []):
+              if line.lower().startswith(("torch", "numpy", "cellpose", "numba", "suite2p")):
+                  print("PKG", line)
+          PY
+
       - name: Benchmark
         run: |
           pytest --benchmark-json=bench-${{ matrix.os }}-py${{ matrix.python-version }}-run${{ matrix.run }}.json
@@ -44,7 +91,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: bench-${{ matrix.os }}-py${{ matrix.python-version }}-run${{ matrix.run }}
-          path: bench-*.json
+          path: |
+            bench-*.json
+            env-*.json
 
   # Aggregate every leg's JSON into a single summary plot, uploaded as an
   # artifact. Runs even if some bench legs failed.
