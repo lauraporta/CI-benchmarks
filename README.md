@@ -1,59 +1,37 @@
 # cellpose-ci-bench
 
-A controlled experiment to find out **why photon-mosaic-pipeline CI runtime
-varies so wildly across runners** (e.g. the same 21-test suite took 1733 s on
-ubuntu py3.14 but 8219 s on ubuntu py3.12 — same OS, identical resolved
-packages, ~33 s install both times). The blow-up is entirely in the
-cellpose-SAM + suite2p CPU compute, and the slow leg changes from run to run.
+A controlled experiment to find **why photon-mosaic-pipeline CI runtime is slow
+and varies wildly across runners** (the same 21-test suite has swung from ~29 min
+to ~137 min on the *same* Ubuntu runner — same OS, identical packages). The
+blow-up is entirely in the cellpose-SAM + suite2p CPU compute.
 
-**Hypothesis:** torch, the BLAS backend, and numba each default to using every
-core, so on a 4-core hosted runner you get ~3× thread oversubscription that
-thrashes — and *how much* it thrashes depends on how loaded the physical runner
-is, which is why it looks random and untied to any one OS/Python.
+## Answer
 
-## The design (why it's trustworthy)
+Two separate causes, both supported by the data:
 
-The dominant confound is **which physical runner you landed on**. So the
-benchmark compares **control (default threads) vs treatment (pinned threads)
-back-to-back in the same process, on the same runner**. If pinning wins *within
-a job*, that's causal evidence for the threading mechanism, independent of
-runner luck. The workflow then repeats the whole job across
-`OS × python × run-index` to sample the runner-luck dimension.
+- **Slow** — the prebuilt torch package for **Linux/Windows** runs cellpose's CPU
+  math ~3× slower than the macOS one. It's the torch build, not the hardware: a
+  plain NumPy matmul is equally fast on all three operating systems.
+- **Variable** — on CI you share a small machine with other jobs, and they steal
+  CPU by a different amount each run. Reproduced locally: adding background CPU
+  load alone stretches cellpose from 55 s to 125 s.
 
-Two workloads, both on CPU:
-- `cellpose_eval` — a cpsam forward pass (the real pipeline hot op).
-- `blas_matmul` — a pure NumPy matmul (isolates BLAS oversubscription alone).
+Full write-up, figures, and reproduce/stress-test steps: **[ROOT_CAUSE.md](ROOT_CAUSE.md)**.
 
-Each job first prints the **thread environment** (`os.cpu_count()`,
-`torch.get_num_threads()`, the BLAS pool size, the `*_NUM_THREADS` vars) so you
-can *see* whether oversubscription is even happening.
+## Layout
 
-## Run it
+```
+tests/test_thread_bench.py        cellpose forward pass + plain NumPy matmul (the compute experiment)
+.github/workflows/bench.yml       runs it across every OS × Python version × repeat
+plot_rootcause.py                 builds the slowness + variance figures from CI results
+stress_test.py / plot_stress.py   imitate a busy CI machine locally
+ROOT_CAUSE.md                     the findings
+archive/                          retired experiments (thread-pinning, I/O) — ruled out, kept for the record
+```
 
-1. Create an empty GitHub repo and push this directory to it (`main`).
-2. The `bench` workflow runs on push, or trigger it manually (Actions →
-   *bench* → *Run workflow*). Re-run it a few times to collect more samples.
-3. Download and aggregate the results:
-   ```bash
-   gh run download <run-id> -D artifacts
-   python analyze.py artifacts
-   ```
+## Recommendation (photon-mosaic-pipeline #74)
 
-## Reading the output
-
-- **`within-job effect`** — `default_min / pin1_min`. A ratio consistently `>1`
-  means pinning is causally faster on the same hardware → oversubscription is
-  real. `≈1` means threads aren't the cause and we look elsewhere
-  (runner contention, I/O, snakemake `--cores 1`).
-- **`cross-run spread`** — coefficient of variation of the min time across the
-  repeated runs, for `default` vs `pin1`. If `pin1` has a much lower CV, pinning
-  also *stabilises* the runtime (kills the variance), which is the actual #74
-  complaint.
-
-## What a positive result would justify (in photon-mosaic-pipeline)
-
-- Pin thread pools in the test/CI environment
-  (`OMP_NUM_THREADS` / `OPENBLAS_NUM_THREADS` / `MKL_NUM_THREADS`,
-  `torch.set_num_threads`, `NUMBA_NUM_THREADS`).
-- Keep the fixture trim (less compute → less exposure to the effect).
-- No need to drop cross-OS coverage.
+Trim the integration fixture (fewer sessions → less cellpose compute). It's the
+one change that helps both problems: less time in the slow math, and less time
+exposed to other jobs stealing CPU. Don't pin thread counts (it's only ever
+slower).

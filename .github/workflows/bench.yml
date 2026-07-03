@@ -67,10 +67,8 @@ jobs:
         with:
           path: artifacts
 
-      - name: Make plot + table
-        run: |
-          python analyze.py artifacts | tee summary.txt
-          python plot.py artifacts
+      - name: Make root-cause figures
+        run: python plot_rootcause.py artifacts
 
       - name: Upload summary
         if: always()
@@ -78,5 +76,5 @@ jobs:
         with:
           name: bench-summary
           path: |
-            bench_summary.png
-            summary.txt
+            rootcause_slowness.png
+            rootcause_variance.png

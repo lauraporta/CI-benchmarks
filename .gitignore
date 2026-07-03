@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
+.pytest_cache/
 artifacts/
 bench-*.json
-bench_summary.png
 *.egg-info/
+.venv/
+local_artifacts/

@@ -1,7 +1,7 @@
 [project]
 name = "cellpose-ci-bench"
 version = "0.0.0"
-description = "Controlled CI benchmark for cellpose/BLAS thread oversubscription"
+description = "Controlled CI benchmark for cellpose/BLAS CPU compute slowness + variance"
 requires-python = ">=3.12"
 
 # Left intentionally UNPINNED to mirror photon-mosaic-pipeline's own unpinned
@@ -18,6 +18,8 @@ dependencies = [
 ]
 
 [tool.pytest.ini_options]
+# Only the live compute experiment; archive/ holds retired tests.
+testpaths = ["tests"]
 addopts = """
 -v
 --benchmark-min-rounds=3
