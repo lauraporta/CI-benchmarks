@@ -151,3 +151,41 @@ def test_blas_matmul(benchmark, setting):
     benchmark.extra_info["cpu_count"] = os.cpu_count()
     out = benchmark(run)
     assert out.shape == (2000, 2000)
+
+
+@pytest.mark.parametrize("setting", list(THREAD_SETTINGS))
+def test_torch_matmul(benchmark, setting):
+    """ADVERSARY CONTROL. The existing ``test_blas_matmul`` control is a **NumPy
+    float64** GEMM -- a *different library* (OpenBLAS / Accelerate / MKL,
+    whichever numpy resolved) at a *different precision* than the code that is
+    actually slow. cpsam is a SAM/ViT transformer: its hot op is a **torch
+    float32** matmul inside attention. If the OS slowness lives in torch's
+    float32 GEMM backend on the linux/windows wheel, a NumPy-float64 matmul is
+    blind to it and would look OS-invariant *even though the hardware/wheel is
+    not*. This control uses the same framework (torch), dtype (float32) and
+    kernel family (GEMM) as cpsam, so it can *see* an effect the numpy control
+    cannot -- distinguishing 'the torch wheel is slow' from 'the numpy BLAS is
+    fine.'"""
+    import torch
+
+    n = THREAD_SETTINGS[setting]
+    torch.manual_seed(1)
+    # Same 2000x2000 shape as test_blas_matmul so the ONLY differences vs that
+    # control are library (numpy->torch) and dtype (float64->float32). Looped so
+    # the timed region is comfortably measurable and dominated by the GEMM.
+    a = torch.rand(2000, 2000, dtype=torch.float32)
+    b = torch.rand(2000, 2000, dtype=torch.float32)
+
+    def run():
+        with _apply_threads(n):
+            with torch.no_grad():
+                out = a
+                for _ in range(8):
+                    out = out @ b
+            return out
+
+    benchmark.extra_info["setting"] = setting
+    benchmark.extra_info["threads"] = "default" if n is None else str(n)
+    benchmark.extra_info["cpu_count"] = os.cpu_count()
+    out = benchmark(run)
+    assert out.shape == (2000, 2000)
