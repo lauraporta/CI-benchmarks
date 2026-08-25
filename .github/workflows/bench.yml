@@ -10,7 +10,7 @@ on:
 
 jobs:
   bench:
-    name: ${{ matrix.os }} py${{ matrix.python-version }} torch${{ matrix.torch-version }} run${{ matrix.run }}
+    name: ${{ matrix.os }} py${{ matrix.python-version }} numpyAB run${{ matrix.run }}
     runs-on: ${{ matrix.os }}
     strategy:
       # Never cancel siblings: we need the full distribution across legs, not a
@@ -29,11 +29,15 @@ jobs:
         # to 228.9 s (and M1 from 29.5 s to 80.9 s). Pin torch as an explicit
         # matrix dimension to confirm within one run. windows-11-arm dropped:
         # pip has no torch wheel for it.
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        # numpy A/B: torch 2.12.1 vs 2.13.0 came out identical on the same
+        # CPU model, yet the same EPYC 7763 ran cellpose in 93.5 s in July
+        # and 228 s now. The other moving part is numpy (2.4.6 -> 2.5.2).
+        # Both versions are benchmarked back-to-back IN THE SAME JOB so the
+        # machine lottery cannot confound the comparison.
+        os: [ubuntu-latest]
         python-version: ["3.12"]
-        torch-version: ["2.12.1", "2.13.0"]
         # Repeat the whole job to sample the runner-luck dimension.
-        run: [1, 2]
+        run: [1, 2, 3]
 
     steps:
       - uses: actions/checkout@v4
@@ -45,18 +49,25 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install "torch==${{ matrix.torch-version }}"
           pip install -e .
 
-      - name: Benchmark
+      - name: Benchmark on current numpy (2.5.x)
         run: |
-          pytest --benchmark-json=bench-${{ matrix.os }}-py${{ matrix.python-version }}-torch${{ matrix.torch-version }}-run${{ matrix.run }}.json
+          pytest --benchmark-json=bench-${{ matrix.os }}-py${{ matrix.python-version }}-numpy252-run${{ matrix.run }}.json
+
+      - name: Downgrade numpy to the July version
+        run: |
+          pip install numpy==2.4.6
+
+      - name: Benchmark on numpy 2.4.6 (same machine)
+        run: |
+          pytest --benchmark-json=bench-${{ matrix.os }}-py${{ matrix.python-version }}-numpy246-run${{ matrix.run }}.json
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bench-${{ matrix.os }}-py${{ matrix.python-version }}-torch${{ matrix.torch-version }}-run${{ matrix.run }}
+          name: bench-${{ matrix.os }}-py${{ matrix.python-version }}-numpyAB-run${{ matrix.run }}
           path: bench-*.json
 
   # Aggregate every leg's JSON into a single summary plot, uploaded as an
