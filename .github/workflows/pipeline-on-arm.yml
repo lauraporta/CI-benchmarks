@@ -16,12 +16,21 @@ on:
 
 jobs:
   pipeline-tests:
-    name: pipeline ${{ matrix.os }}
+    name: pipeline ${{ matrix.os }} run${{ matrix.run }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04-arm, ubuntu-latest]
+        # arm64 leg removed: blocked by ScanImageTiffReader, which bundles an
+        # x86-64-only libScanImageTiffReaderAPI.so (suite2p-NIU dependency) —
+        # confirmed by run 32869548446. This phase samples the suite-level
+        # time distribution instead: EPYC 9V74 did the full suite in 20 min
+        # here while the real repo's Aug-10 CI took 121-145 min on the same 5
+        # integration tests — so machine model alone does not explain the
+        # blow-ups. 5 repeats per OS to see whether pip-installed runs ever
+        # reproduce the 2-hour legs.
+        os: [ubuntu-latest, windows-latest]
+        run: [1, 2, 3, 4, 5]
 
     steps:
       - name: Check out photon-mosaic-pipeline (read-only)
@@ -34,9 +43,11 @@ jobs:
           python-version: "3.12"
 
       - name: Print CPU model
+        shell: bash
         run: |
           cat /proc/cpuinfo | grep -m1 -E "model name|Model" || true
-          nproc
+          nproc || true
+          echo "NUMBER_OF_PROCESSORS=$NUMBER_OF_PROCESSORS" || true
 
       - name: Install
         run: |
