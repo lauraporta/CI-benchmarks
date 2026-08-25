@@ -1,0 +1,44 @@
+name: pipeline-on-arm
+
+# End-to-end validation of the ARM strategy: run the REAL
+# photon-mosaic-pipeline test suite (checked out read-only from upstream)
+# on the free arm64 runner, with ubuntu-latest as the x86 control. If the
+# arm leg installs cleanly (suite2p-NIU, derotation, datashuttle etc. all
+# need aarch64-compatible wheels) and the suite passes in minutes instead
+# of hours, the "move integration legs to ubuntu-24.04-arm" recommendation
+# is proven on the actual workload, not extrapolated from a microbenchmark.
+on:
+  workflow_dispatch:
+
+jobs:
+  pipeline-tests:
+    name: pipeline ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, ubuntu-latest]
+
+    steps:
+      - name: Check out photon-mosaic-pipeline (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: photon-mosaic/photon-mosaic-pipeline
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Print CPU model
+        run: |
+          cat /proc/cpuinfo | grep -m1 -E "model name|Model" || true
+          nproc
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run the full test suite
+        run: |
+          pytest -v --durations=15
