@@ -9,6 +9,10 @@ name: pipeline-on-arm
 # is proven on the actual workload, not extrapolated from a microbenchmark.
 on:
   workflow_dispatch:
+  # workflow_dispatch only sees files on the default branch, so fire on
+  # pushes to the experiment branch too.
+  push:
+    branches: [arm-hardware-hypothesis]
 
 jobs:
   pipeline-tests:
