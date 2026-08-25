@@ -18,10 +18,16 @@ jobs:
       # variance we are investigating in the real repo).
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.12", "3.13", "3.14"]
+        # ARM experiment: the OS gap tracked per-core hardware (M1/Ice Lake
+        # fast, Azure EPYC slow), not the torch wheel — so the free arm64
+        # runners (Cobalt 100) should run cellpose at M1-class speed, and
+        # their homogeneous pool should also remove the machine-lottery
+        # variance seen on x86. Python pinned to 3.12; 5 repeats per OS to
+        # sample the pool.
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-11-arm, macos-latest]
+        python-version: ["3.12"]
         # Repeat the whole job to sample the runner-luck dimension.
-        run: [1, 2, 3]
+        run: [1, 2, 3, 4, 5]
 
     steps:
       - uses: actions/checkout@v4
