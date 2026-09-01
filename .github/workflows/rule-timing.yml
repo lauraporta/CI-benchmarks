@@ -1,0 +1,88 @@
+name: rule-timing
+
+# Closes the open question from the suite-distribution experiment: on the
+# slow machines (EPYC 7763; all Windows) a session costs ~145 s vs ~24 s on
+# EPYC 9V74, but the cellpose microbenchmark only predicts a 1.35x gap — so
+# something OTHER than the torch forward pass must dominate the slow legs.
+# Each job runs ONE full pipeline execution over the standard 11-session
+# fixture with --cores 1 and parses snakemake's own timestamps into per-rule
+# wall times. 6 repeats sample the machine pool; the CPU model is printed so
+# fast and slow draws can be compared rule by rule.
+on:
+  workflow_dispatch:
+  push:
+    branches: [arm-hardware-hypothesis]
+
+jobs:
+  rule-timing:
+    name: rule-timing ubuntu run${{ matrix.run }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        run: [1, 2, 3, 4, 5, 6]
+
+    steps:
+      - name: Check out CI-benchmarks (parser)
+        uses: actions/checkout@v4
+
+      - name: Check out photon-mosaic-pipeline (read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: photon-mosaic/photon-mosaic-pipeline
+          path: pmp
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Print CPU model
+        run: grep -m1 "model name" /proc/cpuinfo; nproc
+
+      - name: Install pipeline
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "./pmp[dev]"
+
+      - name: Build the standard 11-session fixture + config
+        working-directory: pmp
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+          import yaml
+          from tests.test_data_factory import DataFactory
+
+          work = Path("../work").resolve()
+          work.mkdir()
+          DataFactory().create_neuroblueprint_dataset(work)
+          (work / "derivatives").mkdir()
+
+          cfg = yaml.safe_load(
+              open("photon_mosaic_pipeline/workflow/config.yaml")
+          )
+          cfg["project_path"] = str(work)
+          cfg["dataset_discovery"]["tiff_patterns"] = ["*.tif"]
+          yaml.safe_dump(
+              cfg, open(work / "config.yaml", "w"),
+              default_style='"', allow_unicode=True,
+          )
+          EOF
+
+      - name: One full pipeline run, timestamped log
+        env:
+          PHOTON_MOSAIC_FORCE_CPU: "1"
+        run: |
+          SNAKEFILE=$(python -c "from photon_mosaic_pipeline import get_snakefile_path; print(get_snakefile_path())")
+          cd work
+          snakemake --cores 1 --nolock --latency-wait 30 -s "$SNAKEFILE" \
+            --configfile config.yaml 2>&1 | tee ../smk.log
+          cd ..
+          echo "=== PER-RULE TIMING ==="
+          python parse_rule_times.py smk.log
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rule-timing-run${{ matrix.run }}
+          path: smk.log
