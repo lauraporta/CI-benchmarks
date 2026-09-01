@@ -17,7 +17,11 @@ from datetime import datetime
 P = r"^(?:INFO:[\w.]+:)?"
 TS = re.compile(P + r"\[(\w{3} \w{3} +\d+ \d\d:\d\d:\d\d \d{4})\]")
 RULE = re.compile(P + r"(?:checkpoint |local)?rule (\w+):")
-FIN = re.compile(P + r"Finished jobid: \d+|" + P + r"Finished job \d+")
+# FIN deliberately NOT prefix-tolerant: snakemake also emits an
+# "INFO:snakemake.logging:Finished jobid:" duplicate that can arrive BEFORE
+# the timestamped bare copy — matching it would pair the finish with a stale
+# timestamp and report 0 s. Only the bare line follows a fresh [timestamp].
+FIN = re.compile(r"^Finished jobid: \d+|^Finished job \d+")
 WC = re.compile(r"^\s+wildcards: (.+)")
 
 
